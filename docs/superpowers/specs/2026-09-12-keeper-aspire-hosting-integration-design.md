@@ -96,12 +96,29 @@ source that might contain `keeper://` values (default host builder ordering —
 this as long as `AddKeeperSecrets` is called after `CreateBuilder` and before
 any code reads the values in question).
 
-At build/rebuild time, the resulting `KeeperConfigurationProvider`:
+At build time, `KeeperConfigurationSource.Build(IConfigurationBuilder builder)`
+needs to inventory `keeper://` values already produced by previously-added
+sources. `IConfigurationSource.Build` only receives the builder, not
+already-`Load()`-ed provider data, so the inventory step works by
+constructing a **temporary, throwaway `ConfigurationRoot`** from
+`builder.Sources` as registered so far (i.e. `new
+ConfigurationBuilder().Add(...builder.Sources).Build()`), reading its merged
+values, then discarding it — the real providers already on `builder` are
+untouched and load normally afterward. This means every prior source's
+`Load()` runs twice (once for the temporary inventory root, once for the real
+one) — a no-op in practice for the sources Aspire AppHosts actually use
+(JSON files, environment variables, user secrets), all of which are
+side-effect-free to reload. **Constraint:** implicit config-scanning is only
+supported when every configuration source registered before
+`AddKeeperSecrets()` is side-effect-free on reload; a custom source with
+load-time side effects is out of scope for v1 and should use the explicit
+`AddKeeperSecret` API instead.
 
-1. Walks the configuration data already produced by previously-registered
-   providers and records the set of keys whose *current* value is a bare
-   `keeper://...` string, storing `key → notation` — without resolving any of
-   them yet.
+The resulting `KeeperConfigurationProvider`:
+
+1. From that inventory, records the set of keys whose *current* value is a
+   bare `keeper://...` string, storing `key → notation` — without resolving
+   any of them yet.
 2. Does nothing further until `TryGet` is called for one of those keys.
 
 On the **first** `TryGet` call for any recorded key (from anywhere —
@@ -110,16 +127,38 @@ On the **first** `TryGet` call for any recorded key (from anywhere —
 `builder.Configuration["Smtp:Password"]` passed straight into
 `WithEnvironment`), the provider:
 
-3. Resolves **every** recorded `keeper://` notation in one batched
-   `KeeperSecretResolver.ResolveAsync` call (not just the one being read),
-   blocking synchronously on the async call — acceptable because this is a
-   one-time AppHost-startup cost, not a hot path — and caches the results for
-   the lifetime of the provider.
+3. Enters a `SemaphoreSlim`-guarded section and, **inside** the lock, checks
+   whether resolution has already completed (double-checked pattern: the
+   semaphore only serializes access, the cache-populated check is what
+   actually prevents a second resolve). If not yet resolved, it resolves
+   **every** recorded `keeper://` notation in one batched
+   `KeeperSecretResolver.ResolveAsync` call (not just the one being read) and
+   caches the results for the lifetime of the provider. If another thread
+   already completed resolution while this thread was waiting on the
+   semaphore, it skips straight to using the cache.
 4. Returns the resolved value for the requested key; subsequent `TryGet`
-   calls for any recorded key are served from the cache.
+   calls for any recorded key take a fast path that checks the cache before
+   attempting the lock, and are served from the cache without contention.
 
-A `SemaphoreSlim` guards step 3 so concurrent reads from multiple threads
-trigger exactly one resolve, not one per reader.
+Because `TryGet` is a synchronous interface method but `ResolveAsync` is
+async, step 3 blocks the calling thread via
+`Task.Run(() => resolver.ResolveAsync(...)).GetAwaiter().GetResult()` —
+offloading to the thread pool rather than calling `.GetAwaiter().GetResult()`
+directly on the current thread, so the call cannot deadlock even if some
+future caller runs it under an ambient `SynchronizationContext`. (A plain
+.NET generic-host console process, which is what an AppHost is, has no
+`SynchronizationContext` by default and wouldn't deadlock either way, but
+routing through `Task.Run` removes the dependency on that assumption holding
+in every hosting context this code might run under.) This is a one-time
+AppHost-startup cost, not a hot path, so the thread-pool hop's overhead is
+irrelevant.
+
+**Scope:** the inventory is captured once, at initial configuration build.
+Configuration sources with `reloadOnChange` enabled, or values added to
+`IConfiguration` after that point, are not re-scanned — a `keeper://` string
+introduced after startup is out of scope for v1 and passes through
+unresolved. This matches the existing "resolve once at startup" model used by
+the explicit path.
 
 #### Why implicit resolution is lazy, not hook-driven
 
@@ -186,6 +225,13 @@ AppHost's `Program.cs`, **after** every configuration source that may contain
 `keeper://` values and before any code reads those values. Fails fast
 (throws) if the resulting storage/token state is invalid (e.g., no config
 file exists and no one-time token was supplied).
+
+This ordering requirement also covers DI: if an `IOptions<T>` singleton
+bound from a `keeper://`-backed section is resolved by the container before
+`AddKeeperSecrets()` runs, it captures the literal notation string, since
+`IOptions<T>` (unlike `IOptionsSnapshot`/`IOptionsMonitor`) binds once and
+caches for the container's lifetime. Registering `AddKeeperSecrets()` early
+in `Program.cs`, before any service resolution, avoids this.
 
 ### `AddKeeperSecret`
 
@@ -302,7 +348,9 @@ credential file:
   - Notation string parsing / UID extraction.
   - Batching logic (N notations across M UIDs → 1 resolver call), including
     the implicit path's "resolve everything recorded on first touch"
-    behavior.
+    behavior and its double-checked-lock path (concurrent `TryGet` calls
+    from multiple threads trigger exactly one `ResolveAsync` call, verified
+    via a call-count assertion on the fake resolver).
   - Error propagation for: missing UID (absent from response) vs. missing
     field (present record, absent field), missing token/config, and an
     implicit reference touched during publish mode.
@@ -334,8 +382,9 @@ credential file:
 - Exact current `Keeper.SecretsManager` NuGet package API (method names for
   batched `GetSecrets` by UID list, notation parsing helper) needs
   verification against the latest SDK version at implementation time.
-- Confirm `IConfigurationBuilder`/`ConfigurationProvider` in the AppHost host
-  (Aspire's `IDistributedApplicationBuilder.Configuration`) behaves like the
-  standard .NET configuration system with respect to provider-order
-  precedence and lazy rebuild-on-add, since the implicit path's correctness
-  depends on it.
+- Confirm `IDistributedApplicationBuilder.Configuration` exposes an
+  `IConfigurationBuilder` with a standard `Sources` list at the point
+  `AddKeeperSecrets()` runs, so `KeeperConfigurationSource.Build` can
+  construct the temporary inventory root described above. If Aspire's AppHost
+  builder wraps configuration differently, the temporary-root technique needs
+  adjusting accordingly at implementation time.
