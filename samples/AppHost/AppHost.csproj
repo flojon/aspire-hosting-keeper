@@ -7,6 +7,6 @@
     <PackageReference Include="Aspire.Hosting.AppHost" Version="13.5.2" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="../../src/KoalaSoft.Aspire.Hosting.Keeper/KoalaSoft.Aspire.Hosting.Keeper.csproj" />
+    <ProjectReference Include="../../src/KoalaSoft.Aspire.Hosting.Keeper/KoalaSoft.Aspire.Hosting.Keeper.csproj" IsAspireProjectResource="false" />
   </ItemGroup>
 </Project>
