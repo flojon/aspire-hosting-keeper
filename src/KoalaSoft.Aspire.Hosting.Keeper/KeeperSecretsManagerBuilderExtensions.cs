@@ -1,6 +1,9 @@
 using System.Runtime.CompilerServices;
 using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
+using Aspire.Hosting.Lifecycle;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace KoalaSoft.Aspire.Hosting.Keeper;
 
@@ -10,6 +13,40 @@ public static class KeeperSecretsManagerBuilderExtensions
         "AddKeeperSecret requires AddKeeperSecrets(...) to be called first on the same IDistributedApplicationBuilder.";
 
     internal static readonly ConditionalWeakTable<IDistributedApplicationBuilder, KeeperResolutionLifecycleHook> HooksByBuilder = new();
+
+    /// <summary>
+    /// Registers Keeper Secrets Manager support on <paramref name="builder"/>: bootstraps the local
+    /// device config if needed, registers the explicit-path lifecycle hook, and adds the implicit-path
+    /// <see cref="KeeperConfigurationSource"/> to <paramref name="builder"/>'s configuration. Call this
+    /// after every configuration source that may contain <c>keeper://</c> values and before any code
+    /// reads those values or calls <see cref="AddKeeperSecret"/>.
+    /// </summary>
+    public static IDistributedApplicationBuilder AddKeeperSecrets(
+        this IDistributedApplicationBuilder builder,
+        Action<KeeperSecretsManagerOptions>? configure = null)
+    {
+        var options = new KeeperSecretsManagerOptions();
+        configure?.Invoke(options);
+
+        KeeperConfigBootstrapper.EnsureBootstrapped(options);
+
+        var resolver = new KeeperSecretResolver(SecretsManagerClientAdapter.Instance);
+
+        var hook = new KeeperResolutionLifecycleHook(resolver, options);
+        HooksByBuilder.Add(builder, hook);
+        // AddSingleton(hook), not TryAddLifecycleHook<T>: we need DI to share this exact
+        // instance (already stored in HooksByBuilder for AddKeeperSecret), not construct a new one.
+        builder.Services.AddSingleton<IDistributedApplicationLifecycleHook>(hook);
+
+        // ConfigurationManager implements IConfigurationBuilder.Add explicitly, so an
+        // unqualified call resolves to an unrelated same-named MVC extension method instead.
+        ((IConfigurationBuilder)builder.Configuration).Add(new KeeperConfigurationSource(
+            resolver,
+            options,
+            isPublishMode: () => builder.ExecutionContext.IsPublishMode));
+
+        return builder;
+    }
 
     /// <summary>
     /// Creates a secret <see cref="ParameterResource"/> named <paramref name="name"/> whose value
