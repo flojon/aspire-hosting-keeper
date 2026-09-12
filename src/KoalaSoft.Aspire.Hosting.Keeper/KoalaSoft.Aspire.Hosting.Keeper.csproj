@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageId>KoalaSoft.Aspire.Hosting.Keeper</PackageId>
+    <Description>Aspire hosting integration for Keeper Secrets Manager.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Aspire.Hosting" Version="13.0.0" />
+    <PackageReference Include="Keeper.SecretsManager" Version="17.1.2" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="KoalaSoft.Aspire.Hosting.Keeper.Tests" />
+  </ItemGroup>
+</Project>
