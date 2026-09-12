@@ -12,7 +12,7 @@ public class KeeperResolutionLifecycleHookTests
         var record = FakeKeeperSecretsClient.MakeRecord("UID1", ("password", "db-secret"));
         var client = new FakeKeeperSecretsClient(record);
         var resolver = new KeeperSecretResolver(client);
-        var hook = new KeeperResolutionLifecycleHook(resolver, new KeeperSecretsManagerOptions());
+        var hook = new KeeperResolutionLifecycleHook(resolver, new KeeperSecretsManagerOptions(), isPublishMode: () => false);
 
         var param1 = new ParameterResource("db-pw", _ => hook.ResolvedValues["keeper://UID1/field/password"], secret: true);
         param1.Annotations.Add(new KeeperParameterReferenceAnnotation("keeper://UID1/field/password"));
@@ -34,12 +34,31 @@ public class KeeperResolutionLifecycleHookTests
     {
         var client = new FakeKeeperSecretsClient();
         var resolver = new KeeperSecretResolver(client);
-        var hook = new KeeperResolutionLifecycleHook(resolver, new KeeperSecretsManagerOptions());
+        var hook = new KeeperResolutionLifecycleHook(resolver, new KeeperSecretsManagerOptions(), isPublishMode: () => false);
         var unrelated = new ParameterResource("not-keeper", _ => "plain", secret: false);
         var model = new DistributedApplicationModel(new ResourceCollectionStub(unrelated));
 
         await hook.BeforeStartAsync(model, CancellationToken.None);
 
         Assert.Equal(0, client.CallCount);
+    }
+
+    [Fact]
+    public async Task BeforeStartAsync_PublishMode_DoesNotResolveEvenWithAnnotatedParameters()
+    {
+        var record = FakeKeeperSecretsClient.MakeRecord("UID1", ("password", "db-secret"));
+        var client = new FakeKeeperSecretsClient(record);
+        var resolver = new KeeperSecretResolver(client);
+        var hook = new KeeperResolutionLifecycleHook(resolver, new KeeperSecretsManagerOptions(), isPublishMode: () => true);
+
+        var param1 = new ParameterResource("db-pw", _ => hook.ResolvedValues["keeper://UID1/field/password"], secret: true);
+        param1.Annotations.Add(new KeeperParameterReferenceAnnotation("keeper://UID1/field/password"));
+
+        var model = new DistributedApplicationModel(new ResourceCollectionStub(param1));
+
+        await hook.BeforeStartAsync(model, CancellationToken.None);
+
+        Assert.Equal(0, client.CallCount);
+        Assert.Empty(hook.ResolvedValues);
     }
 }

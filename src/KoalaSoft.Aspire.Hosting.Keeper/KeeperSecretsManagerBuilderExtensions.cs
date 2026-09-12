@@ -32,7 +32,7 @@ public static class KeeperSecretsManagerBuilderExtensions
 
         var resolver = new KeeperSecretResolver(SecretsManagerClientAdapter.Instance);
 
-        var hook = new KeeperResolutionLifecycleHook(resolver, options);
+        var hook = new KeeperResolutionLifecycleHook(resolver, options, isPublishMode: () => builder.ExecutionContext.IsPublishMode);
         HooksByBuilder.Add(builder, hook);
         // AddSingleton(hook), not TryAddLifecycleHook<T>: we need DI to share this exact
         // instance (already stored in HooksByBuilder for AddKeeperSecret), not construct a new one.
