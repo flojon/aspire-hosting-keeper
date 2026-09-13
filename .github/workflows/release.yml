@@ -17,9 +17,14 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event.release.tag_name }}
 
+      # All three SDKs: src/test multi-target net8/9/10, and a release-time test run that only
+      # installed one SDK would silently narrow to whichever TFM happens to be preinstalled.
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: |
+            8.0.x
+            9.0.x
+            10.0.x
 
       - name: Test
         run: dotnet test -c Release

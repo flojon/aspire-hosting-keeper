@@ -1,6 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <Sdk Name="Aspire.AppHost.Sdk" Version="13.5.2" />
   <PropertyGroup>
+    <!-- Stays single-targeted: src/test multi-target net8/9/10, but the AppHost SDK and sample
+         apps commonly pin to one TFM, and Directory.Build.props no longer sets this repo-wide. -->
+    <TargetFramework>net8.0</TargetFramework>
     <OutputType>Exe</OutputType>
   </PropertyGroup>
   <ItemGroup>

@@ -1,6 +1,7 @@
 <Project>
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <!-- No shared TargetFramework(s): src/test multi-target net8/9/10, the sample AppHost stays
+         single-targeted, so each project sets its own rather than one being overridden here. -->
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
