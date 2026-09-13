@@ -3,6 +3,7 @@
     <IsPackable>true</IsPackable>
     <PackageId>KoalaSoft.Aspire.Hosting.Keeper</PackageId>
     <Description>Aspire hosting integration for Keeper Secrets Manager.</Description>
+    <PackageTags>aspire;dotnet-aspire;secrets;keeper;secrets-manager;apphost</PackageTags>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Aspire.Hosting" Version="13.0.0" />
