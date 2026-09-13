@@ -1,0 +1,133 @@
+name: CI
+
+# Deliberately unfiltered by base branch. A `branches: [main]` filter looks harmless until a PR
+# is stacked on another PR's branch, which is normal here: that PR then matches no trigger, runs
+# no job, and shows a check list that looks complete because the checks that would have failed
+# never reported. workflow_dispatch is the escape hatch for that, but it only helps whoever
+# already knows the gap exists, so the filter is gone instead. The cost is running CI on PRs
+# targeting branches that are not main, which is exactly what was missing.
+on:
+  pull_request:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - 'release/**'
+
+# A PR that gets a second push doesn't need the first run's result any more.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    # Everything runs in one job so the solution is restored and compiled once; the display
+    # name spells out what that single check actually covers.
+    name: 🔨 build, test & pack
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Only the Push step below writes, and only on a push to main - granted here anyway
+      # because permissions are per-job, not per-step.
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # MinVer derives the package version from tags/history, so the pack step
+          # needs the full history rather than a shallow clone.
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v6
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'Directory.Build.props') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: Restore
+        run: dotnet restore
+
+      # Not -warnaserror yet: the codebase currently carries a few obsolete-API warnings
+      # (IDistributedApplicationLifecycleHook, ParameterResource.Value) unrelated to CI setup.
+      # Turn it on once those are cleaned up, to stop new warnings from accumulating unnoticed.
+      - name: Build
+        run: dotnet build -c Release --no-restore
+
+      - name: Test
+        run: dotnet test -c Release --no-build --logger "trx;LogFileName=results.trx" --results-directory ./artifacts/test-results
+
+      # Packing on every PR catches packaging-only breakage (missing README/LICENSE, bad
+      # metadata) here rather than at release time, where release.yml deliberately has no
+      # --skip-duplicate safety net. Packed project by project like release.yml: the solution
+      # also holds the sample AppHost and the test projects.
+      - name: Pack
+        run: |
+          dotnet pack src/KoalaSoft.Aspire.Hosting.Keeper/KoalaSoft.Aspire.Hosting.Keeper.csproj -c Release --no-build -o ./artifacts/package
+
+      # Everything above packs whatever MinVer computes for the commit, which off a tag is
+      # always a prerelease - so without this, no pack in CI would ever produce the shape that
+      # actually gets pushed to nuget.org.
+      #
+      # The version is synthetic and never published; it only has to be stable.
+      - name: Pack the release shape
+        run: |
+          dotnet pack src/KoalaSoft.Aspire.Hosting.Keeper/KoalaSoft.Aspire.Hosting.Keeper.csproj -c Release -o ./artifacts/stable \
+            -p:MinVerVersionOverride=9.9.9 \
+            -p:PackageReleaseNotes="release-shape check"
+
+      # The rule the release shape has to satisfy: nuget.org fails the *push* of a stable
+      # package whose nuspec mentions a prerelease version anywhere, including as a dependency
+      # range's upper bound (NuGetGallery#6948). Nothing local catches it - pack emits at most
+      # NU5104, a warning, and the client, restore and GitHub Packages all accept the package.
+      # The first signal is a 400 from nuget.org, by which point the tag is pushed and the
+      # release is public.
+      - name: Verify the release shape carries no prerelease version
+        run: |
+          for pkg in ./artifacts/stable/*.nupkg; do
+            prerelease=$(unzip -p "$pkg" '*.nuspec' \
+              | grep -o 'version="[^"]*"' \
+              | grep -- '-' \
+              || true)
+            if [ -n "$prerelease" ]; then
+              echo "::error::$(basename "$pkg") is stable but its nuspec declares a prerelease version; nuget.org will reject the push"
+              printf '%s\n' "$prerelease"
+              exit 1
+            fi
+          done
+          echo "release-shape nuspecs declare no prerelease versions"
+
+      - name: Upload test results
+        # Test results are most useful exactly when the run failed.
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results
+          path: ./artifacts/test-results
+          if-no-files-found: warn
+
+      - name: Upload packages
+        uses: actions/upload-artifact@v7
+        with:
+          name: nuget-packages
+          path: ./artifacts/package/*.nupkg
+
+      # main publishes a preview per commit; a release branch does not, since it would
+      # version-collide with main's prereleases on the feed. Also excludes workflow_dispatch:
+      # main matches its ref same as a real push would, and a manual rerun republishing whatever
+      # commit happens to be checked out is not what that trigger is for.
+      #
+      # ./artifacts/package, never ./artifacts/stable - the release-shape pack above is a
+      # synthetic 9.9.9 built only to be scanned for a prerelease bound, not a package that
+      # should ever reach a feed.
+      - name: Add GitHub Packages source
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: dotnet nuget add source --username ${{ github.repository_owner }} --password ${{ secrets.GITHUB_TOKEN }} --store-password-in-clear-text --name github "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json"
+
+      - name: Push
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: dotnet nuget push "./artifacts/package/*.nupkg" --source github --skip-duplicate --api-key ${{ secrets.GITHUB_TOKEN }}

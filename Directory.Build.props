@@ -5,4 +5,33 @@
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
   </PropertyGroup>
+
+  <!-- One release tag mints the version, from the tag itself. Repo-wide so no project can
+       silently pack as the SDK default 1.0.0, which release.yml would then push. -->
+  <PropertyGroup>
+    <MinVerTagPrefix>v</MinVerTagPrefix>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MinVer" Version="6.0.0" PrivateAssets="All" />
+  </ItemGroup>
+
+  <!-- Package metadata every package in src/ shares. -->
+  <PropertyGroup>
+    <Authors>Jonas Flodén</Authors>
+    <PackageProjectUrl>https://github.com/flojon/aspire-hosting-keeper</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/flojon/aspire-hosting-keeper</RepositoryUrl>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <!-- Resolved from the repo root, so the path holds regardless of project depth. Inert where
+       IsPackable is false - those projects never pack. -->
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)LICENSE" Pack="true" PackagePath="" />
+    <None Include="$(MSBuildThisFileDirectory)README.md" Pack="true" PackagePath="" />
+  </ItemGroup>
 </Project>
