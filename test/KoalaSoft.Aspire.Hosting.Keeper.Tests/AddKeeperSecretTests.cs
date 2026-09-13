@@ -30,4 +30,12 @@ public class AddKeeperSecretTests
 
         Assert.Throws<InvalidOperationException>(() => resourceBuilder.Resource.Value);
     }
+
+    [Fact]
+    public void AddKeeperSecret_MalformedNotation_ThrowsImmediatelyAtCallSite()
+    {
+        var builder = DistributedApplication.CreateBuilder(Array.Empty<string>());
+
+        Assert.Throws<KeeperResolutionException>(() => builder.AddKeeperSecret("db-pw", "not-a-keeper-notation"));
+    }
 }

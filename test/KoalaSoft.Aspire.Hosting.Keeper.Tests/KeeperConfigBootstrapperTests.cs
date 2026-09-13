@@ -53,6 +53,25 @@ public class KeeperConfigBootstrapperTests : IDisposable
     }
 
     [Fact]
+    public void EnsureBootstrapped_StorageSetDirectly_ExchangesViaCustomStorageAndDoesNotOverwriteIt()
+    {
+        var customPath = Path.Combine(_tempDir, "custom-storage.json");
+        var customStorage = new LocalConfigStorage(customPath);
+        var options = new KeeperSecretsManagerOptions
+        {
+            Storage = customStorage,
+            OneTimeToken = "fake-token",
+        };
+        var exchanger = new FakeKeeperTokenExchanger();
+
+        KeeperConfigBootstrapper.EnsureBootstrapped(options, exchanger);
+
+        Assert.Equal(1, exchanger.CallCount);
+        Assert.Same(customStorage, options.Storage);
+        Assert.False(File.Exists(ConfigPath));
+    }
+
+    [Fact]
     public void EnsureBootstrapped_ConcurrentCallers_ExchangeExactlyOnce()
     {
         var options = new KeeperSecretsManagerOptions { ConfigPath = ConfigPath, OneTimeToken = "fake-token" };

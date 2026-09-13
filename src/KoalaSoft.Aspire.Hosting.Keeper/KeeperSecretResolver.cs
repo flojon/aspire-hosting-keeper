@@ -58,7 +58,7 @@ internal sealed class KeeperSecretResolver
         const string prefix = "keeper://";
         if (!notation.StartsWith(prefix, StringComparison.Ordinal))
         {
-            throw new FormatException($"'{notation}' is not a valid keeper:// notation reference.");
+            throw new KeeperResolutionException($"'{notation}' is not a valid keeper:// notation reference.");
         }
 
         var afterPrefix = notation.AsSpan(prefix.Length);

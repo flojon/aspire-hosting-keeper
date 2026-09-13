@@ -16,6 +16,7 @@ public sealed class KeeperSecretsManagerOptions
         "aspire-config.json");
 
     private string _configPath = DefaultConfigPath;
+    private IKeyValueStorage _storage = new LocalConfigStorage(DefaultConfigPath);
 
     /// <summary>
     /// Path backing the default <see cref="LocalConfigStorage"/>. Setting this replaces
@@ -29,6 +30,7 @@ public sealed class KeeperSecretsManagerOptions
         {
             _configPath = value;
             Storage = new LocalConfigStorage(value);
+            StorageIsManagedByConfigPath = true;
         }
     }
 
@@ -36,7 +38,24 @@ public sealed class KeeperSecretsManagerOptions
     /// Storage backing the Keeper SDK's local device credentials. Defaults to a
     /// <see cref="LocalConfigStorage"/> at <see cref="ConfigPath"/>.
     /// </summary>
-    public IKeyValueStorage Storage { get; set; } = new LocalConfigStorage(DefaultConfigPath);
+    public IKeyValueStorage Storage
+    {
+        get => _storage;
+        set
+        {
+            _storage = value;
+            StorageIsManagedByConfigPath = false;
+        }
+    }
+
+    /// <summary>
+    /// True when <see cref="Storage"/> was produced by the <see cref="ConfigPath"/> setter (or is
+    /// still the untouched default) rather than assigned directly by the caller. Distinguishes
+    /// "the default/managed <see cref="LocalConfigStorage"/> at <see cref="ConfigPath"/>" from
+    /// "a caller-supplied <see cref="LocalConfigStorage"/> at some other path" — both are the same
+    /// runtime type, so <see cref="KeeperConfigBootstrapper"/> cannot otherwise tell them apart.
+    /// </summary>
+    internal bool StorageIsManagedByConfigPath { get; private set; } = true;
 
     /// <summary>
     /// One-time token used only to bootstrap <see cref="Storage"/> on first run. Not required

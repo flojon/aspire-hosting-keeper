@@ -28,7 +28,12 @@ public static class KeeperSecretsManagerBuilderExtensions
         var options = new KeeperSecretsManagerOptions();
         configure?.Invoke(options);
 
-        KeeperConfigBootstrapper.EnsureBootstrapped(options);
+        // Publish must never touch local Keeper credentials: a publish-only machine (e.g. CI)
+        // may have none, and bootstrapping here would fail before either publish-mode guard below runs.
+        if (!builder.ExecutionContext.IsPublishMode)
+        {
+            KeeperConfigBootstrapper.EnsureBootstrapped(options);
+        }
 
         var resolver = new KeeperSecretResolver(SecretsManagerClientAdapter.Instance);
 
@@ -59,6 +64,10 @@ public static class KeeperSecretsManagerBuilderExtensions
         string name,
         string notation)
     {
+        // Fail fast at the call site, not lazily inside BeforeStartAsync; the extracted
+        // UID itself is discarded, resolution re-extracts it later.
+        KeeperSecretResolver.ExtractUid(notation);
+
         var resource = new ParameterResource(
             name,
             _ => HooksByBuilder.TryGetValue(builder, out var hook)

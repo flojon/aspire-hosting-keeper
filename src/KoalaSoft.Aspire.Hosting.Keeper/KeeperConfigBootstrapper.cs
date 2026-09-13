@@ -18,11 +18,13 @@ internal static class KeeperConfigBootstrapper
     {
         exchanger ??= SecretsManagerClientTokenExchanger.Instance;
 
-        if (options.Storage is not LocalConfigStorage)
+        if (!options.StorageIsManagedByConfigPath)
         {
-            // Custom storage: bootstrap-file atomicity/permissions/locking don't apply. Only
-            // exchange the token if one was supplied; otherwise trust the caller's storage
-            // already holds valid device credentials.
+            // Storage was assigned directly by the caller (even if it happens to be a
+            // LocalConfigStorage) rather than produced by the ConfigPath setter: it is not "the
+            // managed default path", so bootstrap-file atomicity/permissions/locking don't apply,
+            // and ConfigPath must not be consulted. Only exchange the token if one was supplied;
+            // otherwise trust the caller's storage already holds valid device credentials.
             if (options.OneTimeToken is not null)
             {
                 exchanger.InitializeStorage(options.Storage, options.OneTimeToken, hostName: null);

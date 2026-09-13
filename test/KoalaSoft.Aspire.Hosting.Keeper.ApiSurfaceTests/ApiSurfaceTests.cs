@@ -29,4 +29,21 @@ public class ApiSurfaceTests : IDisposable
 
         Assert.Equal("db-password", parameter.Resource.Name);
     }
+
+    [Fact]
+    public void AddKeeperSecrets_InPublishMode_SkipsBootstrapEvenWithNoConfigAndNoToken()
+    {
+        // "--operation publish" is how DistributedApplicationBuilder itself detects publish mode
+        // (Aspire.Hosting's own AddCommandLine switch mapping), so this is real publish mode, not a fake.
+        var builder = DistributedApplication.CreateBuilder(new[] { "--operation", "publish" });
+        Assert.True(builder.ExecutionContext.IsPublishMode);
+
+        var missingConfigPath = Path.Combine(_tempDir, "does-not-exist.json");
+
+        // No exception: bootstrap must be skipped entirely in publish mode, not merely tolerant
+        // of a missing config file (there is neither a config file nor a OneTimeToken here).
+        builder.AddKeeperSecrets(options => options.ConfigPath = missingConfigPath);
+
+        Assert.False(File.Exists(missingConfigPath));
+    }
 }

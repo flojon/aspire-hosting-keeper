@@ -18,7 +18,7 @@ public class KeeperSecretResolverTests
     [Fact]
     public void ExtractUid_ThrowsOnNonKeeperNotation()
     {
-        Assert.Throws<FormatException>(() => KeeperSecretResolver.ExtractUid("not-a-keeper-uri"));
+        Assert.Throws<KeeperResolutionException>(() => KeeperSecretResolver.ExtractUid("not-a-keeper-uri"));
     }
 
     [Fact]
