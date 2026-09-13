@@ -78,7 +78,7 @@ internal static class KeeperConfigBootstrapper
             SetOwnerOnlyPermissionsIfSupported(tempPath);
 
             File.Move(tempPath, configPath);
-            options.Storage = new LocalConfigStorage(configPath);
+            options.SetManagedStorage(new LocalConfigStorage(configPath));
         }
         finally
         {

@@ -62,4 +62,14 @@ public sealed class KeeperSecretsManagerOptions
     /// once the local config already contains device credentials.
     /// </summary>
     public string? OneTimeToken { get; set; }
+
+    /// <summary>
+    /// Re-points <see cref="Storage"/> at the freshly-bootstrapped config file without going
+    /// through the public setter, which would mark it as caller-assigned and disable the
+    /// once-only guard for any other caller still holding this same <see cref="KeeperSecretsManagerOptions"/>.
+    /// </summary>
+    internal void SetManagedStorage(IKeyValueStorage storage)
+    {
+        _storage = storage;
+    }
 }
