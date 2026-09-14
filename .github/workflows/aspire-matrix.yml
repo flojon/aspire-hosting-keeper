@@ -1,0 +1,98 @@
+name: Aspire version matrix
+
+# Weekly + manual, not every PR: this exercises 6 legs (2 Aspire versions x 3 TFMs) and exists to
+# catch Aspire.Hosting itself breaking us between releases, not to gate ordinary changes. The
+# path filter still runs it on a PR that touches the inputs this matrix actually depends on.
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - Directory.Build.props
+      - src/KoalaSoft.Aspire.Hosting.Keeper/KoalaSoft.Aspire.Hosting.Keeper.csproj
+      - .github/workflows/aspire-matrix.yml
+
+concurrency:
+  group: aspire-matrix-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Aspire.Hosting ${{ matrix.aspire-version-label }} / ${{ matrix.tfm }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    strategy:
+      # A newer Aspire.Hosting release breaking net10.0 shouldn't hide a floor break on net8.0 -
+      # every leg's result is independently useful here, unlike ci.yml's single combined job.
+      fail-fast: false
+      matrix:
+        include:
+          # Floor is duplicated from Directory.Build.props's $(AspireVersion) default rather than
+          # left implicit, so every leg in this matrix threads -p:AspireVersion explicitly and a
+          # bump to the floor is a two-file diff instead of a silently stale matrix leg.
+          - aspire-version-label: floor
+            aspire-version: "13.0.0"
+            tfm: net8.0
+          - aspire-version-label: floor
+            aspire-version: "13.0.0"
+            tfm: net9.0
+          - aspire-version-label: floor
+            aspire-version: "13.0.0"
+            tfm: net10.0
+          - aspire-version-label: latest
+            aspire-version: "13.5.3"
+            tfm: net8.0
+          - aspire-version-label: latest
+            aspire-version: "13.5.3"
+            tfm: net9.0
+          - aspire-version-label: latest
+            aspire-version: "13.5.3"
+            tfm: net10.0
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+            10.0.x
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v6
+        with:
+          path: ~/.nuget/packages
+          key: nuget-aspire-matrix-${{ runner.os }}-${{ matrix.aspire-version }}-${{ hashFiles('**/*.csproj', 'Directory.Build.props') }}
+          restore-keys: nuget-aspire-matrix-${{ runner.os }}-${{ matrix.aspire-version }}-
+
+      - name: Restore
+        run: dotnet restore -p:AspireVersion=${{ matrix.aspire-version }}
+
+      # Confirms what NuGet actually resolved, not just the requested version: a floor that has
+      # been yanked or a "latest" that quietly moved would otherwise pass silently.
+      - name: Report resolved Aspire.Hosting version
+        run: dotnet list src/KoalaSoft.Aspire.Hosting.Keeper/KoalaSoft.Aspire.Hosting.Keeper.csproj package | grep -i Aspire.Hosting
+
+      # Not -warnaserror: matches ci.yml, which deliberately doesn't enable it yet either (see
+      # that workflow's Build step) - this matrix isn't the place to fix that separately.
+      - name: Build
+        run: dotnet build -c Release --no-restore -f ${{ matrix.tfm }} -p:AspireVersion=${{ matrix.aspire-version }}
+
+      # LogFilePrefix, not LogFileName, for the same reason as ci.yml: without it, results from
+      # different legs sharing an upload could overwrite each other.
+      - name: Test
+        run: dotnet test -c Release --no-build -f ${{ matrix.tfm }} -p:AspireVersion=${{ matrix.aspire-version }} --logger "trx;LogFilePrefix=results" --results-directory ./artifacts/test-results
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-${{ matrix.aspire-version-label }}-${{ matrix.tfm }}
+          path: ./artifacts/test-results
+          if-no-files-found: warn
