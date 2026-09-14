@@ -9,6 +9,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
+    <!-- Floor version the package supports; aspire-matrix.yml overrides this to test against
+         the latest Aspire.Hosting release too, without needing central package management. -->
+    <AspireVersion Condition="'$(AspireVersion)' == ''">13.0.0</AspireVersion>
   </PropertyGroup>
 
   <!-- One release tag mints the version, from the tag itself. Repo-wide so no project can

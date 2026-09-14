@@ -6,7 +6,9 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.0" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
-    <PackageReference Include="Aspire.Hosting" Version="13.0.0" />
+    <!-- Must track the src project's version, not a fixed one: a floating -p:AspireVersion
+         (aspire-matrix.yml) would otherwise NU1605-downgrade-error against this pin. -->
+    <PackageReference Include="Aspire.Hosting" Version="$(AspireVersion)" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/KoalaSoft.Aspire.Hosting.Keeper/KoalaSoft.Aspire.Hosting.Keeper.csproj" />

@@ -38,9 +38,8 @@ jobs:
           # needs the full history rather than a shallow clone.
           fetch-depth: 0
 
-      # Tests against the floor Aspire.Hosting version only (no aspire-matrix.yml): this repo
-      # has no central package management or $(AspireVersion) indirection to float, and adding
-      # those just for one package's Aspire-version leg isn't worth it yet.
+      # Tests against the default (floor) Aspire.Hosting version only; aspire-matrix.yml covers
+      # floor vs. latest across net8/9/10 separately, on a schedule rather than every PR.
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: |
