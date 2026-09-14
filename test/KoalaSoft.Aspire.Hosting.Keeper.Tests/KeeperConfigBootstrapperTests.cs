@@ -77,22 +77,28 @@ public class KeeperConfigBootstrapperTests : IDisposable
         var options = new KeeperSecretsManagerOptions { ConfigPath = ConfigPath, OneTimeToken = "fake-token" };
         var exchanger = new FakeKeeperTokenExchanger();
 
-        // Capping real concurrency (rather than letting all 8 threads run free, as
-        // Parallel.For would) forces at least one caller's once-only check to run strictly
-        // after the first bootstrap completes: with only maxConcurrentCallers slots, most of
-        // the 8 threads must wait for a slot to free, and the first slot to free is always the
-        // one that finished the real bootstrap (a caller blocked on the file lock cannot finish
-        // before the lock holder releases it). That reproduces exactly the ordering the #2 bug
-        // needed to manifest, deterministically and without depending on core count or sleeps.
+        // Capping real concurrency (rather than letting all 8 run free, as Parallel.For
+        // would) forces a happens-before edge the bug needs to survive: the winner's
+        // gate.Release() is ordered, by that thread's own program order, strictly after its
+        // state mutation, and SemaphoreSlim's release/wait pair is a full memory fence — so
+        // any caller newly admitted through that release is guaranteed to observe the
+        // winner's post-exchange state. With only maxConcurrentCallers slots and 8 callers,
+        // at least one caller is always admitted this way, deterministically and without
+        // depending on core count or sleeps.
         const int callerCount = 8;
         const int maxConcurrentCallers = 2;
         using var allCallersReady = new Barrier(callerCount);
         using var gate = new SemaphoreSlim(maxConcurrentCallers, maxConcurrentCallers);
 
-        var threads = new Thread[callerCount];
+        // LongRunning gets each caller a dedicated thread rather than a thread-pool slot —
+        // with 8 callers blocking on Barrier/SemaphoreSlim, pool injection throttling could
+        // otherwise starve this on a low-core machine. Using Task (not raw Thread) still
+        // means an unexpected exception surfaces as a test failure via the awaited Task,
+        // rather than crashing the process on an unobserved thread.
+        var callers = new Task[callerCount];
         for (var i = 0; i < callerCount; i++)
         {
-            threads[i] = new Thread(() =>
+            callers[i] = Task.Factory.StartNew(() =>
             {
                 allCallersReady.SignalAndWait();
                 gate.Wait();
@@ -104,14 +110,10 @@ public class KeeperConfigBootstrapperTests : IDisposable
                 {
                     gate.Release();
                 }
-            });
-            threads[i].Start();
+            }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
         }
 
-        foreach (var thread in threads)
-        {
-            thread.Join();
-        }
+        Task.WaitAll(callers);
 
         Assert.Equal(1, exchanger.CallCount);
         Assert.True(File.Exists(ConfigPath));
