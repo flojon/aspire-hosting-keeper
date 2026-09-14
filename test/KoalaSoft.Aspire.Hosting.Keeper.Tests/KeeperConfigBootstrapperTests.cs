@@ -77,7 +77,41 @@ public class KeeperConfigBootstrapperTests : IDisposable
         var options = new KeeperSecretsManagerOptions { ConfigPath = ConfigPath, OneTimeToken = "fake-token" };
         var exchanger = new FakeKeeperTokenExchanger();
 
-        Parallel.For(0, 8, _ => KeeperConfigBootstrapper.EnsureBootstrapped(options, exchanger));
+        // Capping real concurrency (rather than letting all 8 threads run free, as
+        // Parallel.For would) forces at least one caller's once-only check to run strictly
+        // after the first bootstrap completes: with only maxConcurrentCallers slots, most of
+        // the 8 threads must wait for a slot to free, and the first slot to free is always the
+        // one that finished the real bootstrap (a caller blocked on the file lock cannot finish
+        // before the lock holder releases it). That reproduces exactly the ordering the #2 bug
+        // needed to manifest, deterministically and without depending on core count or sleeps.
+        const int callerCount = 8;
+        const int maxConcurrentCallers = 2;
+        using var allCallersReady = new Barrier(callerCount);
+        using var gate = new SemaphoreSlim(maxConcurrentCallers, maxConcurrentCallers);
+
+        var threads = new Thread[callerCount];
+        for (var i = 0; i < callerCount; i++)
+        {
+            threads[i] = new Thread(() =>
+            {
+                allCallersReady.SignalAndWait();
+                gate.Wait();
+                try
+                {
+                    KeeperConfigBootstrapper.EnsureBootstrapped(options, exchanger);
+                }
+                finally
+                {
+                    gate.Release();
+                }
+            });
+            threads[i].Start();
+        }
+
+        foreach (var thread in threads)
+        {
+            thread.Join();
+        }
 
         Assert.Equal(1, exchanger.CallCount);
         Assert.True(File.Exists(ConfigPath));
