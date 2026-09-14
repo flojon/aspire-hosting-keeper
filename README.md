@@ -39,6 +39,41 @@ Configuration values can also reference `keeper://` URIs directly (e.g. in
 See `samples/AppHost` for a runnable end-to-end example, including the implicit
 configuration path.
 
+## TypeScript AppHost (polyglot)
+
+`AddKeeperSecrets` and `AddKeeperSecret` are annotated `[AspireExport]`, so a
+TypeScript AppHost (Aspire 13.2+) can call them once you add this package to
+`aspire.config.json`:
+
+```json
+{
+  "packages": {
+    "KoalaSoft.Aspire.Hosting.Keeper": "%ASPIRE_VERSION%"
+  }
+}
+```
+
+```typescript
+import { createBuilder } from './.aspire/modules/aspire.mjs';
+
+const builder = await createBuilder();
+
+await builder.addKeeperSecrets({ oneTimeToken: process.env.KEEPER_ONE_TIME_TOKEN });
+const dbPassword = await builder.addKeeperSecret("db-password", "keeper://<record-uid>/field/password");
+
+const demo = await builder.addContainer("demo", { image: "hello-world" });
+await demo.withEnvironment("DB_PASSWORD", dbPassword);
+
+await builder.build().run();
+```
+
+The **implicit** `keeper://`-in-configuration path only resolves values read through
+the .NET orchestration host's own `IConfiguration` (its environment variables, or an
+`appsettings.json` when the AppHost is a `.csproj`-based project). A TypeScript
+AppHost is configured entirely through `aspire.config.json`, which isn't wired into
+that `IConfiguration`, so `keeper://` values embedded there won't resolve implicitly.
+From TypeScript, use the explicit `addKeeperSecret(...)` call above for every secret.
+
 ## License
 
 MIT

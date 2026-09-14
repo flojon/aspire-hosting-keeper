@@ -1,3 +1,4 @@
+using Aspire.Hosting;
 using SecretsManager;
 
 namespace KoalaSoft.Aspire.Hosting.Keeper;
@@ -5,6 +6,7 @@ namespace KoalaSoft.Aspire.Hosting.Keeper;
 /// <summary>
 /// Configuration for resolving <c>keeper://</c> notation references via Keeper Secrets Manager.
 /// </summary>
+[AspireExport]
 public sealed class KeeperSecretsManagerOptions
 {
     /// <summary>
@@ -23,6 +25,7 @@ public sealed class KeeperSecretsManagerOptions
     /// <see cref="Storage"/> with a new <see cref="LocalConfigStorage"/> at the given path.
     /// Has no effect if <see cref="Storage"/> is subsequently set directly.
     /// </summary>
+    [AspireExport]
     public string ConfigPath
     {
         get => _configPath;
@@ -38,6 +41,7 @@ public sealed class KeeperSecretsManagerOptions
     /// Storage backing the Keeper SDK's local device credentials. Defaults to a
     /// <see cref="LocalConfigStorage"/> at <see cref="ConfigPath"/>.
     /// </summary>
+    [AspireExportIgnore(Reason = "IKeyValueStorage is a .NET-only extensibility point; use ConfigPath from TypeScript instead.")]
     public IKeyValueStorage Storage
     {
         get => _storage;
@@ -61,6 +65,7 @@ public sealed class KeeperSecretsManagerOptions
     /// One-time token used only to bootstrap <see cref="Storage"/> on first run. Not required
     /// once the local config already contains device credentials.
     /// </summary>
+    [AspireExport]
     public string? OneTimeToken { get; set; }
 
     /// <summary>

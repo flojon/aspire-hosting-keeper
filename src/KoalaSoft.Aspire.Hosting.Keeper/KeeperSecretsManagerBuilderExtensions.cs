@@ -21,6 +21,7 @@ public static class KeeperSecretsManagerBuilderExtensions
     /// after every configuration source that may contain <c>keeper://</c> values and before any code
     /// reads those values or calls <see cref="AddKeeperSecret"/>.
     /// </summary>
+    [AspireExport]
     public static IDistributedApplicationBuilder AddKeeperSecrets(
         this IDistributedApplicationBuilder builder,
         Action<KeeperSecretsManagerOptions>? configure = null)
@@ -59,9 +60,10 @@ public static class KeeperSecretsManagerBuilderExtensions
     /// unresolved until <see cref="KeeperResolutionLifecycleHook"/> runs, before any dependent
     /// resource starts. Requires <c>AddKeeperSecrets</c> to have been called first on the same builder.
     /// </summary>
+    [AspireExport]
     public static IResourceBuilder<ParameterResource> AddKeeperSecret(
         this IDistributedApplicationBuilder builder,
-        string name,
+        [ResourceName] string name,
         string notation)
     {
         // Fail fast at the call site, not lazily inside BeforeStartAsync; the extracted
