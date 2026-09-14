@@ -11,10 +11,13 @@ on:
     paths:
       - Directory.Build.props
       - src/KoalaSoft.Aspire.Hosting.Keeper/KoalaSoft.Aspire.Hosting.Keeper.csproj
+      - test/KoalaSoft.Aspire.Hosting.Keeper.ApiSurfaceTests/KoalaSoft.Aspire.Hosting.Keeper.ApiSurfaceTests.csproj
       - .github/workflows/aspire-matrix.yml
 
 concurrency:
-  group: aspire-matrix-${{ github.event.pull_request.number || github.ref }}
+  # event_name keeps a scheduled run and a manual dispatch from cancelling each other - both
+  # otherwise fall back to the same github.ref group.
+  group: aspire-matrix-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}
   cancel-in-progress: true
 
 jobs:
@@ -84,15 +87,17 @@ jobs:
       - name: Build
         run: dotnet build -c Release --no-restore -f ${{ matrix.tfm }} -p:AspireVersion=${{ matrix.aspire-version }}
 
-      # LogFilePrefix, not LogFileName, for the same reason as ci.yml: without it, results from
-      # different legs sharing an upload could overwrite each other.
+      # A leg's own results directory, not a shared one: the solution restore/build/test still
+      # covers both the Tests and ApiSurfaceTests projects for this one TFM, so a single leg
+      # produces two trx files - LogFilePrefix alone doesn't guarantee they can't collide (it
+      # relies on a per-second timestamp vstest appends), but a dedicated directory per leg does.
       - name: Test
-        run: dotnet test -c Release --no-build -f ${{ matrix.tfm }} -p:AspireVersion=${{ matrix.aspire-version }} --logger "trx;LogFilePrefix=results" --results-directory ./artifacts/test-results
+        run: dotnet test -c Release --no-build -f ${{ matrix.tfm }} -p:AspireVersion=${{ matrix.aspire-version }} --logger "trx;LogFilePrefix=results" --results-directory ./artifacts/test-results/${{ matrix.aspire-version-label }}-${{ matrix.tfm }}
 
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: test-results-${{ matrix.aspire-version-label }}-${{ matrix.tfm }}
-          path: ./artifacts/test-results
+          path: ./artifacts/test-results/${{ matrix.aspire-version-label }}-${{ matrix.tfm }}
           if-no-files-found: warn
