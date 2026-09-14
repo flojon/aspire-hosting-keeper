@@ -1,0 +1,63 @@
+name: .NET 11 preview smoke test
+
+# Scheduled/dispatch-only, deliberately never pull_request/push: net11.0 is a still-prerelease
+# TFM (see IncludeNet11Preview in Directory.Build.props), and its SDK moves out from under a PR
+# without any code here changing. Gating ordinary CI on that would fail PRs for reasons nobody
+# touched. workflow_dispatch is the manual escape hatch to run it on demand.
+on:
+  schedule:
+    - cron: "0 6 * * 1" # every Monday
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: 🔥 build & test against .NET 11 preview
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # Released SDKs first: src/test multi-target net8/9/10 regardless of this workflow, and
+      # the preview SDK below is additive to that, not a replacement for it.
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+            10.0.x
+
+      # A second setup-dotnet call, not a second dotnet-version line on the one above:
+      # dotnet-quality applies to the whole step, so folding 11.0.x in with the GA versions
+      # would ask the GA SDKs to resolve at preview quality too.
+      - name: Setup .NET 11 preview SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "11.0.x"
+          dotnet-quality: preview
+
+      - name: Restore
+        run: dotnet restore -p:IncludeNet11Preview=true
+
+      # No -warnaserror, matching ci.yml: this is a smoke test for the preview TFM, not a gate
+      # on the pre-existing obsolete-API warnings tracked there.
+      - name: Build
+        run: dotnet build -c Release --no-restore -p:IncludeNet11Preview=true
+
+      # LogFilePrefix, not LogFileName: multi-targeting now includes net11.0 too, so one project
+      # produces four trx files per run.
+      - name: Test
+        run: dotnet test -c Release --no-build -p:IncludeNet11Preview=true --logger "trx;LogFilePrefix=results" --results-directory ./artifacts/test-results
+
+      - name: Upload test results
+        # Most useful exactly when the run failed - which, for a preview SDK, is the point of
+        # running this at all.
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: net11-preview-test-results
+          path: ./artifacts/test-results
+          if-no-files-found: warn
