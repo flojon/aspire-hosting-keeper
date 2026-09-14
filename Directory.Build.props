@@ -3,6 +3,9 @@
     <!-- Default for src/test, which multi-target net8/9/10; the sample AppHost overrides down to
          a single TFM in its own csproj (condition only fires when a project hasn't set either). -->
     <TargetFrameworks Condition="'$(TargetFrameworks)' == '' and '$(TargetFramework)' == ''">net8.0;net9.0;net10.0</TargetFrameworks>
+    <!-- Opt-in only: the scheduled preview workflow sets this; a plain build/CI run never adds
+         the still-prerelease net11.0 TFM to the default multi-target list. -->
+    <TargetFrameworks Condition="'$(IncludeNet11Preview)' == 'true' and '$(TargetFramework)' == ''">$(TargetFrameworks);net11.0</TargetFrameworks>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
