@@ -87,12 +87,15 @@ jobs:
       - name: Build
         run: dotnet build -c Release --no-restore -f ${{ matrix.tfm }} -p:AspireVersion=${{ matrix.aspire-version }}
 
-      # A leg's own results directory, not a shared one: the solution restore/build/test still
-      # covers both the Tests and ApiSurfaceTests projects for this one TFM, so a single leg
-      # produces two trx files - LogFilePrefix alone doesn't guarantee they can't collide (it
-      # relies on a per-second timestamp vstest appends), but a dedicated directory per leg does.
+      # A per-leg directory alone doesn't stop the collision: `dotnet test` with no project arg
+      # picks up the whole .sln, so one leg still runs both Tests and ApiSurfaceTests for this TFM
+      # in-process, and both would land in the same directory under the same LogFilePrefix,
+      # relying on their vstest timestamps (second-granularity) landing in different seconds. A
+      # per-project subdirectory removes the race instead of hoping the two finish a second apart.
       - name: Test
-        run: dotnet test -c Release --no-build -f ${{ matrix.tfm }} -p:AspireVersion=${{ matrix.aspire-version }} --logger "trx;LogFilePrefix=results" --results-directory ./artifacts/test-results/${{ matrix.aspire-version-label }}-${{ matrix.tfm }}
+        run: |
+          dotnet test test/KoalaSoft.Aspire.Hosting.Keeper.Tests/KoalaSoft.Aspire.Hosting.Keeper.Tests.csproj -c Release --no-build -f ${{ matrix.tfm }} -p:AspireVersion=${{ matrix.aspire-version }} --logger "trx;LogFilePrefix=results" --results-directory ./artifacts/test-results/${{ matrix.aspire-version-label }}-${{ matrix.tfm }}/tests
+          dotnet test test/KoalaSoft.Aspire.Hosting.Keeper.ApiSurfaceTests/KoalaSoft.Aspire.Hosting.Keeper.ApiSurfaceTests.csproj -c Release --no-build -f ${{ matrix.tfm }} -p:AspireVersion=${{ matrix.aspire-version }} --logger "trx;LogFilePrefix=results" --results-directory ./artifacts/test-results/${{ matrix.aspire-version-label }}-${{ matrix.tfm }}/apisurfacetests
 
       - name: Upload test results
         if: always()
